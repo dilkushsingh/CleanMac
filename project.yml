@@ -1,0 +1,49 @@
+name: CleanMac
+options:
+  bundleIdPrefix: com.cleanmac
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "15.0"
+    MARKETING_VERSION: "0.1.0-beta"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    CODE_SIGN_IDENTITY: "-"
+    ENABLE_HARDENED_RUNTIME: YES
+
+targets:
+  CleanMac:
+    type: application
+    platform: macOS
+    sources:
+      - path: CleanMac
+    info:
+      path: CleanMac/Info.plist
+      properties:
+        LSUIElement: true
+        CFBundleName: CleanMac
+        CFBundleDisplayName: CleanMac
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSHumanReadableCopyright: "© 2026 Dilkush Singh. All rights reserved."
+        LSApplicationCategoryType: public.app-category.utilities
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.cleanmac.app
+        GENERATE_INFOPLIST_FILE: NO
+
+  CleanMacTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: CleanMacTests
+    dependencies:
+      - target: CleanMac
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.cleanmac.app.tests
