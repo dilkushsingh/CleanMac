@@ -4,13 +4,23 @@ import AppKit
 final class CleaningOverlayWindow {
     private var windows: [NSWindow] = []
     private weak var manager: CleaningModeManager?
+    private var appAppearance: AppAppearance = .system
 
     init(manager: CleaningModeManager) {
         self.manager = manager
     }
 
+    func applyAppearance(_ appearance: AppAppearance) {
+        appAppearance = appearance
+
+        for window in windows {
+            window.appearance = appearance.nsAppearance
+        }
+    }
+
     func show() {
         guard let manager else { return }
+
         for screen in NSScreen.screens {
             let win = NonActivatingPanel(
                 contentRect: screen.frame,
@@ -19,20 +29,30 @@ final class CleaningOverlayWindow {
                 defer: false,
                 screen: screen
             )
+
             win.level = .screenSaver
             win.isOpaque = false
             win.backgroundColor = .clear
             win.ignoresMouseEvents = false
             win.hasShadow = false
             win.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-            win.contentView = NSHostingView(rootView: OverlayView(manager: manager))
-            win.orderFrontRegardless()
+
+            win.appearance = appAppearance.nsAppearance
+            win.contentView = NSHostingView(
+                rootView: OverlayView(manager: manager)
+                    .preferredColorScheme(appAppearance.colorScheme)
+            )
+
             windows.append(win)
+            win.orderFrontRegardless()
         }
     }
 
     func close() {
-        for w in windows { w.orderOut(nil); w.close() }
+        for window in windows {
+            window.orderOut(nil)
+            window.close()
+        }
         windows.removeAll()
     }
 }
@@ -97,14 +117,14 @@ struct OverlayView: View {
             }
             .padding(60)
         }
-        .preferredColorScheme(settings.overlayAppearance.colorScheme)
+        .preferredColorScheme(settings.appAppearance.colorScheme)
     }
 
     private var background: LinearGradient {
         let dark = [Color.black.opacity(0.92), Color(white: 0.08).opacity(0.92)]
         let light = [Color.white.opacity(0.92), Color(white: 0.9).opacity(0.92)]
         let colors: [Color]
-        switch settings.overlayAppearance {
+        switch settings.appAppearance {
         case .dark: colors = dark
         case .light: colors = light
         case .system: colors = isSystemDark() ? dark : light

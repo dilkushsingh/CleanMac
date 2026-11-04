@@ -12,8 +12,11 @@ struct CleanMacApp: App {
     var body: some Scene {
         MenuBarExtra {
             MenuContent(manager: manager)
+                .preferredColorScheme(settings.appAppearance.colorScheme)
         } label: {
-            Image(systemName: manager.state == .locked ? "lock.fill" : "bubbles.and.sparkles.fill")
+            Image(systemName: manager.state == .locked
+                  ? "lock.fill"
+                  : "bubbles.and.sparkles.fill")
         }
         .menuBarExtraStyle(.menu)
 
@@ -23,6 +26,7 @@ struct CleanMacApp: App {
 
         Window("About CleanMac", id: "about") {
             AboutView()
+                .preferredColorScheme(settings.appAppearance.colorScheme)
         }
         .windowResizability(.contentSize)
         .defaultPosition(.center)
