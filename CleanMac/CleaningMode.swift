@@ -17,9 +17,12 @@ enum CleaningModeState: String {
     }
 }
 
-enum OverlayAppearance: String, CaseIterable, Identifiable {
+enum AppAppearance: String, CaseIterable, Identifiable {
+
     case system, light, dark
+
     var id: String { rawValue }
+
     var label: String {
         switch self {
         case .system: "System"
@@ -27,6 +30,7 @@ enum OverlayAppearance: String, CaseIterable, Identifiable {
         case .dark: "Dark"
         }
     }
+
     var colorScheme: ColorScheme? {
         switch self {
         case .system: nil
@@ -34,6 +38,15 @@ enum OverlayAppearance: String, CaseIterable, Identifiable {
         case .dark: .dark
         }
     }
+
+    var nsAppearance: NSAppearance? {
+        switch self {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
+        }
+    }
+
     var icon: String {
         switch self {
         case .system: "circle.lefthalf.filled"
@@ -65,6 +78,7 @@ final class CleaningModeManager: ObservableObject {
             Task { @MainActor in self?.failOpen(reason: "System sleeping") }
         }
     }
+
 
     deinit {
         if let o = sleepObserver {
@@ -107,8 +121,8 @@ final class CleaningModeManager: ObservableObject {
         monitor = m
 
         let o = CleaningOverlayWindow(manager: self)
-        o.show()
         overlay = o
+        o.show()
 
         startAutoUnlock()
         startTicker()
@@ -192,8 +206,20 @@ final class AppSettings: ObservableObject {
             d.set(v, forKey: "unlockHoldSeconds")
         }
     }
-    @Published var overlayAppearance: OverlayAppearance {
-        didSet { d.set(overlayAppearance.rawValue, forKey: "overlayAppearance") }
+    @Published var appAppearance: AppAppearance {
+        didSet {
+            d.set(appAppearance.rawValue, forKey: "appAppearance")
+            Self.apply(appearance: appAppearance)
+        }
+    }
+
+    /// Single source of truth for appearance propagation. Setting
+    /// `NSApp.appearance` cascades to every window (Settings, About, overlay)
+    /// and `nil` correctly restores System inheritance — unlike per-window
+    /// assignment, which is sticky around nil on macOS.
+    static func apply(appearance: AppAppearance) {
+        guard let app = NSApp else { return }
+        app.appearance = appearance.nsAppearance
     }
     @Published var launchAtLogin: Bool {
         didSet {
@@ -216,8 +242,12 @@ final class AppSettings: ObservableObject {
         let rawHold = (d.object(forKey: "unlockHoldSeconds") as? Double) ?? Self.holdDefault
         self.unlockHoldSeconds = Self.normalizeHold(rawHold)
 
-        let rawAppearance = (d.string(forKey: "overlayAppearance")).flatMap(OverlayAppearance.init(rawValue:))
-        self.overlayAppearance = rawAppearance ?? .system
+        let rawAppearance = (
+            d.string(forKey: "appAppearance") ??
+            d.string(forKey: "overlayAppearance")
+        ).flatMap(AppAppearance.init(rawValue:))
+
+        self.appAppearance = rawAppearance ?? .system
 
         self.launchAtLogin = (SMAppService.mainApp.status == .enabled)
     }
@@ -235,68 +265,210 @@ final class AppSettings: ObservableObject {
 
 // MARK: - Settings view
 
+
+
 struct SettingsView: View {
+
     @ObservedObject var settings: AppSettings
 
     var body: some View {
-        Form {
-            Section {
-                Toggle("Launch at login", isOn: $settings.launchAtLogin)
+
+        VStack(alignment: .leading, spacing: 17) {
+
+            // MARK: - Launch at login
+
+            HStack {
+                Text("Launch at login")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.primary)
+
+                Spacer()
+
+                Toggle("", isOn: $settings.launchAtLogin)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 11)
+            .background {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(cardBackground)
             }
 
-            Section("Automatic unlock") {
-                SliderRow(
+            // MARK: - Automatic unlock
+
+            VStack(alignment: .leading, spacing: 12) {
+
+                Text("Automatic Unlock Time")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .padding(.leading, 4)
+
+                FullWidthSliderRow(
                     valueText: formatDuration(settings.autoUnlockSeconds),
                     minLabel: "1 min",
                     maxLabel: "5 min",
                     value: Binding(
                         get: { Double(settings.autoUnlockSeconds) },
-                        set: { settings.autoUnlockSeconds =
-                            Int(($0 / Double(AppSettings.autoUnlockStep)).rounded())
-                                * AppSettings.autoUnlockStep }
+                        set: {
+                            settings.autoUnlockSeconds =
+                                Int(($0 / Double(AppSettings.autoUnlockStep)).rounded())
+                                * AppSettings.autoUnlockStep
+                        }
                     ),
-                    range: Double(AppSettings.autoUnlockRange.lowerBound)
-                        ... Double(AppSettings.autoUnlockRange.upperBound),
+                    range: (Double(AppSettings.autoUnlockRange.lowerBound)...Double(AppSettings.autoUnlockRange.upperBound)),
+                    step: Double(AppSettings.autoUnlockStep),
                     defaultValue: Double(AppSettings.autoUnlockDefault)
                 )
             }
 
-            Section("Unlock hold") {
-                SliderRow(
-                    valueText: String(format: "%.1f s", settings.unlockHoldSeconds),
+            // MARK: - Unlock hold
+
+            VStack(alignment: .leading, spacing: 12) {
+
+                Text("Unlock Hold Time")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .padding(.leading, 4)
+
+                FullWidthSliderRow(
+                    valueText: String(
+                        format: "%.1f s",
+                        settings.unlockHoldSeconds
+                    ),
                     minLabel: "2 s",
                     maxLabel: "5 s",
                     value: Binding(
                         get: { settings.unlockHoldSeconds },
-                        set: { settings.unlockHoldSeconds =
-                            ($0 / AppSettings.holdStep).rounded() * AppSettings.holdStep }
+                        set: {
+                            settings.unlockHoldSeconds =
+                                ($0 / AppSettings.holdStep).rounded()
+                                * AppSettings.holdStep
+                        }
                     ),
                     range: AppSettings.holdRange,
+                    step: AppSettings.holdStep,
                     defaultValue: AppSettings.holdDefault
                 )
             }
 
-            Section("Overlay appearance") {
-                AppearancePicker(value: $settings.overlayAppearance)
+            // MARK: - Overlay appearance
+
+            VStack(alignment: .leading, spacing: 12) {
+
+                Text("Appearance")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .padding(.leading, 4)
+
+                AppearancePicker(value: $settings.appAppearance)
+                    .padding(10)
+                    .frame(maxWidth: .infinity)
+                    .background {
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(cardBackground)
+                    }
             }
         }
-        .formStyle(.grouped)
-        .frame(width: 420)
-        .onAppear {
-            DispatchQueue.main.async {
-                NSApp.activate(ignoringOtherApps: true)
-                NSApp.windows
-                    .first { $0.identifier?.rawValue.contains("Settings") == true || $0.title.contains("Settings") }?
-                    .orderFrontRegardless()
-            }
+        .padding(20)
+        .frame(width: 450)
+        .background {
+            Color(nsColor: .underPageBackgroundColor)
+                .ignoresSafeArea()
         }
     }
 
+    private var cardBackground: Color {
+        Color.primary.opacity(0.07)
+    }
+
     private func formatDuration(_ s: Int) -> String {
-        let m = s / 60, r = s % 60
+        let m = s / 60
+        let r = s % 60
+
         return r == 0 ? "\(m) min" : "\(m) min \(r) s"
     }
 }
+
+
+
+
+struct FullWidthSliderRow: View {
+
+    let valueText: String
+    let minLabel: String
+    let maxLabel: String
+
+    @Binding var value: Double
+
+    let range: ClosedRange<Double>
+    let step: Double
+    let defaultValue: Double
+
+    var body: some View {
+
+        VStack(spacing: 4) {
+
+            // Value and reset button
+
+            HStack(spacing: 10) {
+
+                Spacer()
+
+                Text(valueText)
+                    .font(.system(size: 14, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(.primary)
+
+                Button {
+                    value = defaultValue
+                } label: {
+                    Image(systemName: "arrow.counterclockwise")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Reset to default")
+            }
+
+            // Full-width slider with endpoint labels
+
+            Slider(
+                value: $value,
+                in: range,
+                step: step
+            ) {
+                EmptyView()
+            } minimumValueLabel: {
+                Text(minLabel)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .monospacedDigit()
+            } maximumValueLabel: {
+                Text(maxLabel)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .monospacedDigit()
+            }
+            .tint(.accentColor)
+            .accessibilityLabel("Adjust setting")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
+        .background {
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color.primary.opacity(0.07))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(Color.primary.opacity(0.04), lineWidth: 1)
+                }
+        }
+    }
+}
+
 
 private struct SliderRow: View {
     let valueText: String
@@ -327,16 +499,14 @@ private struct SliderRow: View {
                 .opacity(isDefault ? 0.35 : 1)
                 .padding(.leading, 14)
             }
-            Slider(value: $value, in: range)
-                .tint(.accentColor)
-                .frame(maxWidth: .infinity)
-            HStack {
-                Text(minLabel)
-                Spacer()
-                Text(maxLabel)
+            Slider(value: $value, in: range) {
+                EmptyView()
+            } minimumValueLabel: {
+                Text(minLabel).font(.caption2).foregroundStyle(.tertiary)
+            } maximumValueLabel: {
+                Text(maxLabel).font(.caption2).foregroundStyle(.tertiary)
             }
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
+            .tint(.accentColor)
         }
         .padding(.horizontal, 2)
         .padding(.vertical, 2)
@@ -344,11 +514,11 @@ private struct SliderRow: View {
 }
 
 private struct AppearancePicker: View {
-    @Binding var value: OverlayAppearance
+    @Binding var value: AppAppearance
 
     var body: some View {
         HStack(spacing: 6) {
-            ForEach(OverlayAppearance.allCases) { option in
+            ForEach(AppAppearance.allCases) { option in
                 let isSelected = value == option
                 Button { value = option } label: {
                     HStack(spacing: 6) {

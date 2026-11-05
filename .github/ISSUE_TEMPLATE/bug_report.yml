@@ -1,0 +1,51 @@
+name: Bug report
+description: Something in CleanMac is broken or behaving unexpectedly.
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open CleanMac
+        2. Click "Enable Cleaning Mode"
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: e.g. macOS 15.1 (24B83)
+    validations:
+      required: true
+  - type: input
+    id: mac
+    attributes:
+      label: Mac model
+      placeholder: e.g. MacBook Pro 14" M3 Pro
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: CleanMac version
+      placeholder: e.g. 0.1.0-beta (shown in About)
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs (optional)
+      description: |
+        If helpful, paste output from Console.app filtered by subsystem
+        `com.cleanmac.app`. Do **not** include anything that looks like
+        personal keystrokes.
+      render: shell

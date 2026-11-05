@@ -11,6 +11,7 @@ final class CleaningOverlayWindow {
 
     func show() {
         guard let manager else { return }
+
         for screen in NSScreen.screens {
             let win = NonActivatingPanel(
                 contentRect: screen.frame,
@@ -19,20 +20,28 @@ final class CleaningOverlayWindow {
                 defer: false,
                 screen: screen
             )
+
             win.level = .screenSaver
             win.isOpaque = false
             win.backgroundColor = .clear
             win.ignoresMouseEvents = false
             win.hasShadow = false
             win.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+
+            // No per-window appearance — inherits from NSApp.appearance,
+            // which is the single source of truth managed by AppSettings.
             win.contentView = NSHostingView(rootView: OverlayView(manager: manager))
-            win.orderFrontRegardless()
+
             windows.append(win)
+            win.orderFrontRegardless()
         }
     }
 
     func close() {
-        for w in windows { w.orderOut(nil); w.close() }
+        for window in windows {
+            window.orderOut(nil)
+            window.close()
+        }
         windows.removeAll()
     }
 }
@@ -97,14 +106,13 @@ struct OverlayView: View {
             }
             .padding(60)
         }
-        .preferredColorScheme(settings.overlayAppearance.colorScheme)
     }
 
     private var background: LinearGradient {
         let dark = [Color.black.opacity(0.92), Color(white: 0.08).opacity(0.92)]
         let light = [Color.white.opacity(0.92), Color(white: 0.9).opacity(0.92)]
         let colors: [Color]
-        switch settings.overlayAppearance {
+        switch settings.appAppearance {
         case .dark: colors = dark
         case .light: colors = light
         case .system: colors = isSystemDark() ? dark : light
