@@ -66,7 +66,6 @@ final class CleaningModeManager: ObservableObject {
     private let settings = AppSettings.shared
     private var monitor: InputEventMonitor?
     private var overlay: CleaningOverlayWindow?
-    private var appearanceCancellable: AnyCancellable?
     private var autoUnlockTimer: Timer?
     private var tickTimer: Timer?
     private var sleepObserver: NSObjectProtocol?
@@ -78,14 +77,8 @@ final class CleaningModeManager: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor in self?.failOpen(reason: "System sleeping") }
         }
-        appearanceCancellable = settings.$appAppearance
-            .sink { [weak self] appearance in
-                Task { @MainActor [weak self] in
-                    self?.overlay?.applyAppearance(appearance)
-                }
-            }
     }
-    
+
 
     deinit {
         if let o = sleepObserver {
@@ -128,7 +121,6 @@ final class CleaningModeManager: ObservableObject {
         monitor = m
 
         let o = CleaningOverlayWindow(manager: self)
-        o.applyAppearance(settings.appAppearance)
         overlay = o
         o.show()
 
@@ -217,7 +209,17 @@ final class AppSettings: ObservableObject {
     @Published var appAppearance: AppAppearance {
         didSet {
             d.set(appAppearance.rawValue, forKey: "appAppearance")
+            Self.apply(appearance: appAppearance)
         }
+    }
+
+    /// Single source of truth for appearance propagation. Setting
+    /// `NSApp.appearance` cascades to every window (Settings, About, overlay)
+    /// and `nil` correctly restores System inheritance — unlike per-window
+    /// assignment, which is sticky around nil on macOS.
+    static func apply(appearance: AppAppearance) {
+        guard let app = NSApp else { return }
+        app.appearance = appearance.nsAppearance
     }
     @Published var launchAtLogin: Bool {
         didSet {
@@ -371,12 +373,8 @@ struct SettingsView: View {
         .padding(20)
         .frame(width: 450)
         .background {
-            Color(nsColor: .windowBackgroundColor)
+            Color(nsColor: .underPageBackgroundColor)
                 .ignoresSafeArea()
-        }
-        .background {
-            SettingsAppearanceUpdater(appearance: settings.appAppearance)
-                .frame(width: 0, height: 0)
         }
     }
 
@@ -409,11 +407,11 @@ struct FullWidthSliderRow: View {
 
     var body: some View {
 
-        VStack(spacing: 10) {
+        VStack(spacing: 4) {
 
             // Value and reset button
 
-            HStack {
+            HStack(spacing: 10) {
 
                 Spacer()
 
@@ -426,46 +424,45 @@ struct FullWidthSliderRow: View {
                     value = defaultValue
                 } label: {
                     Image(systemName: "arrow.counterclockwise")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(.secondary)
-                        .frame(width: 28, height: 28)
+                        .frame(width: 22, height: 22)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help("Reset to default")
             }
 
-            // Full-width slider
+            // Full-width slider with endpoint labels
 
             Slider(
                 value: $value,
                 in: range,
                 step: step
-            )
-            .tint(.accentColor)
-            .frame(maxWidth: .infinity)
-            .accessibilityLabel("Adjust setting")
-
-            // Minimum and maximum labels
-
-            HStack {
+            ) {
+                EmptyView()
+            } minimumValueLabel: {
                 Text(minLabel)
-
-                Spacer()
-
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .monospacedDigit()
+            } maximumValueLabel: {
                 Text(maxLabel)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .monospacedDigit()
             }
-            .font(.system(size: 10, weight: .medium))
-            .foregroundStyle(.secondary)
+            .tint(.accentColor)
+            .accessibilityLabel("Adjust setting")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
         .frame(maxWidth: .infinity)
         .background {
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: 14)
                 .fill(Color.primary.opacity(0.07))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 16)
+                    RoundedRectangle(cornerRadius: 14)
                         .stroke(Color.primary.opacity(0.04), lineWidth: 1)
                 }
         }

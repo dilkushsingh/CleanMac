@@ -4,18 +4,9 @@ import AppKit
 final class CleaningOverlayWindow {
     private var windows: [NSWindow] = []
     private weak var manager: CleaningModeManager?
-    private var appAppearance: AppAppearance = .system
 
     init(manager: CleaningModeManager) {
         self.manager = manager
-    }
-
-    func applyAppearance(_ appearance: AppAppearance) {
-        appAppearance = appearance
-
-        for window in windows {
-            window.appearance = appearance.nsAppearance
-        }
     }
 
     func show() {
@@ -37,11 +28,9 @@ final class CleaningOverlayWindow {
             win.hasShadow = false
             win.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
 
-            win.appearance = appAppearance.nsAppearance
-            win.contentView = NSHostingView(
-                rootView: OverlayView(manager: manager)
-                    .preferredColorScheme(appAppearance.colorScheme)
-            )
+            // No per-window appearance — inherits from NSApp.appearance,
+            // which is the single source of truth managed by AppSettings.
+            win.contentView = NSHostingView(rootView: OverlayView(manager: manager))
 
             windows.append(win)
             win.orderFrontRegardless()
@@ -117,7 +106,6 @@ struct OverlayView: View {
             }
             .padding(60)
         }
-        .preferredColorScheme(settings.appAppearance.colorScheme)
     }
 
     private var background: LinearGradient {

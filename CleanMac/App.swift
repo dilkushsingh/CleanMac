@@ -9,10 +9,16 @@ struct CleanMacApp: App {
     @StateObject private var manager = CleaningModeManager()
     @StateObject private var settings = AppSettings.shared
 
+    init() {
+        // Restore persisted appearance as soon as NSApp is available.
+        DispatchQueue.main.async {
+            AppSettings.apply(appearance: AppSettings.shared.appAppearance)
+        }
+    }
+
     var body: some Scene {
         MenuBarExtra {
             MenuContent(manager: manager)
-                .preferredColorScheme(settings.appAppearance.colorScheme)
         } label: {
             Image(systemName: manager.state == .locked
                   ? "lock.fill"
@@ -20,13 +26,14 @@ struct CleanMacApp: App {
         }
         .menuBarExtraStyle(.menu)
 
-        Settings {
+        Window("CleanMac Settings", id: "settings") {
             SettingsView(settings: settings)
         }
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
 
         Window("About CleanMac", id: "about") {
             AboutView()
-                .preferredColorScheme(settings.appAppearance.colorScheme)
         }
         .windowResizability(.contentSize)
         .defaultPosition(.center)
@@ -44,13 +51,24 @@ struct MenuContent: View {
         }
         .disabled(manager.state != .normal)
         Divider()
-        SettingsLink { Text("Settings…") }
-        Button("About CleanMac") {
-            NSApp.activate(ignoringOtherApps: true)
-            openWindow(id: "about")
-        }
+        Button("Settings…") { present("settings") }
+            .keyboardShortcut(",", modifiers: .command)
+        Button("About CleanMac") { present("about") }
+        Divider()
         Button("Quit") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
+    }
+
+    private func present(_ id: String) {
+        openWindow(id: id)
+        // 150ms so SwiftUI has created the window AND any Space switch
+        // triggered by activation has had time to settle before we look it up
+        // and bring it forward.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            if let window = NSApp.windows.first(where: { $0.identifier?.rawValue == id }) {
+                WindowPresenter.bringToFrontOnMainScreen(window)
+            }
+        }
     }
 }
 
@@ -116,13 +134,7 @@ struct AboutView: View {
         }
         .padding(28)
         .frame(width: 360)
-        .onAppear {
-            DispatchQueue.main.async {
-                NSApp.activate(ignoringOtherApps: true)
-                NSApp.windows.first { $0.identifier?.rawValue == "about" }?
-                    .orderFrontRegardless()
-            }
-        }
+        .background(Color(nsColor: .underPageBackgroundColor).ignoresSafeArea())
     }
 
     @ViewBuilder
@@ -134,6 +146,62 @@ struct AboutView: View {
         }
         .frame(maxWidth: 220)
     }
+}
+
+/// Brings a window forward on an LSUIElement app and centers it on the primary
+/// display. Uses a brief `.floating` level kick so the window pops above other
+/// apps' windows, then drops back to `.normal` so it behaves like a regular
+/// window (focusable, hideable when the user switches apps). The app stays as
+/// `.accessory` throughout — no Dock icon appears.
+enum WindowPresenter {
+    static func bringToFrontOnMainScreen(_ window: NSWindow) {
+        if let screen = NSScreen.main ?? NSScreen.screens.first {
+            let visible = screen.visibleFrame
+            var frame = window.frame
+            frame.origin.x = visible.midX - frame.width / 2
+            frame.origin.y = visible.midY - frame.height / 2
+            frame.origin.x = max(visible.minX, min(visible.maxX - frame.width, frame.origin.x))
+            frame.origin.y = max(visible.minY, min(visible.maxY - frame.height, frame.origin.y))
+            window.setFrame(frame, display: true)
+        }
+        window.collectionBehavior.insert(.moveToActiveSpace)
+
+        window.level = .floating
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
+
+        // Drop to .normal the moment the user clicks away. This keeps the
+        // window visible over fullscreen apps on open, then lets it behave
+        // like a regular window (can be sent behind) after that.
+        dropLevelOnResignKey(window)
+    }
+
+    private static var resignObservers: [ObjectIdentifier: NSObjectProtocol] = [:]
+
+    private static func dropLevelOnResignKey(_ window: NSWindow) {
+        let id = ObjectIdentifier(window)
+        if let existing = resignObservers[id] {
+            NotificationCenter.default.removeObserver(existing)
+        }
+        // Ignore didResignKey events that fire during the initial Space switch
+        // / activation handshake — otherwise the window drops to .normal before
+        // it has even been drawn on the destination Space.
+        let armed = ArmedFlag()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { armed.value = true }
+
+        let observer = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification,
+            object: window,
+            queue: .main
+        ) { [weak window] _ in
+            guard armed.value else { return }
+            window?.level = .normal
+        }
+        resignObservers[id] = observer
+    }
+
+    private final class ArmedFlag { var value = false }
 }
 
 /// Generated tile icon. Replace with a real asset catalog icon when designed.
