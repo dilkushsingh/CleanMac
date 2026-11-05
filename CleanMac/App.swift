@@ -10,9 +10,11 @@ struct CleanMacApp: App {
     @StateObject private var settings = AppSettings.shared
 
     init() {
-        // Restore persisted appearance as soon as NSApp is available.
         DispatchQueue.main.async {
             AppSettings.apply(appearance: AppSettings.shared.appAppearance)
+            // Use the generated tile as the app icon so Finder / Dock /
+            // Force Quit / the About panel all show the same thing.
+            NSApp.applicationIconImage = AboutIcon.image(size: 512)
         }
     }
 
