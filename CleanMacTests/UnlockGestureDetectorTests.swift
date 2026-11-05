@@ -83,11 +83,13 @@ final class UnlockGestureDetectorTests: XCTestCase {
 
 final class AppSettingsNormalizationTests: XCTestCase {
     func testAutoUnlockClamps() {
-        XCTAssertEqual(AppSettings.normalizeAutoUnlock(0), 30)
-        XCTAssertEqual(AppSettings.normalizeAutoUnlock(5), 30)
-        XCTAssertEqual(AppSettings.normalizeAutoUnlock(45), 30)
+        // Current bounds: 60 s … 300 s, snapped to 30 s steps.
+        XCTAssertEqual(AppSettings.normalizeAutoUnlock(0), 60)
+        XCTAssertEqual(AppSettings.normalizeAutoUnlock(5), 60)
+        XCTAssertEqual(AppSettings.normalizeAutoUnlock(59), 60)
         XCTAssertEqual(AppSettings.normalizeAutoUnlock(60), 60)
-        XCTAssertEqual(AppSettings.normalizeAutoUnlock(1200), 600)
+        XCTAssertEqual(AppSettings.normalizeAutoUnlock(120), 120)
+        XCTAssertEqual(AppSettings.normalizeAutoUnlock(1200), 300)
     }
 
     func testHoldClamps() {
